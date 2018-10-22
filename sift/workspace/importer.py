@@ -901,7 +901,6 @@ class SatPyImporter(aImporter):
 
         from uuid import uuid1
         scn = self.load_all_datasets()
-        
         for ds_id, ds in scn.datasets.items():
             # don't recreate a Product for one we already have
             if ds_id in existing_ids:
@@ -918,7 +917,7 @@ class SatPyImporter(aImporter):
                 atime=now,
             )
             prod.resource.append(res)
-            
+
             assert(INFO.OBS_TIME in meta)
             assert(INFO.OBS_DURATION in meta)
             prod.update(meta)  # sets fields like obs_duration and obs_time transparently
@@ -975,11 +974,9 @@ class SatPyImporter(aImporter):
         # copy satpy metadata keys to SIFT keys
         for ds in self.scn:
             start_time = ds.attrs['start_time']
-            end_time=ds.attrs['end_time']
-            ds.attrs[INFO.OBS_TIME] = start_time[0]
-            ds.attrs[INFO.SCHED_TIME] = start_time[0]
-            duration = end_time[0]-start_time[0]
-            
+            ds.attrs[INFO.OBS_TIME] = start_time
+            ds.attrs[INFO.SCHED_TIME] = start_time
+            duration = start_time - ds.attrs.get('end_time', start_time)
             if duration.total_seconds() == 0:
                 duration = timedelta(minutes=60)
             ds.attrs[INFO.OBS_DURATION] = duration

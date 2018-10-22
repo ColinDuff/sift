@@ -294,7 +294,6 @@ class ABI_AHI_Guidebook(Guidebook):
             )
         else:
             dtime = when.strftime('%Y-%m-%d %H:%M:%S')
-            
         return dtime
 
     def _default_display_name(self, ds_info, display_time=None):
@@ -302,6 +301,7 @@ class ABI_AHI_Guidebook(Guidebook):
         sat = ds_info[INFO.PLATFORM]
         inst = ds_info[INFO.INSTRUMENT]
         name = ds_info.get(INFO.SHORT_NAME, '-unknown-')
+
         label = ds_info.get(INFO.STANDARD_NAME, '')
         if label == 'toa_bidirectional_reflectance':
             label = 'Refl'
@@ -313,7 +313,7 @@ class ABI_AHI_Guidebook(Guidebook):
         if display_time is None:
             display_time = ds_info.get(INFO.DISPLAY_TIME, self._default_display_time(ds_info))
         name = "{sat} {inst} {name} {standard_name} {dtime}".format(
-                sat=sat, inst=inst, name=name, standard_name=label, dtime=display_time)
+            sat=sat.value, inst=inst.value, name=name, standard_name=label, dtime=display_time)
         return name
 
 

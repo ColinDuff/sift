@@ -1231,7 +1231,7 @@ class Document(QObject):  # base class is rightmost, mixins left of that
             }),
             ('SEVIRI IODC', {
                 'proj4_str': '+proj=geos +lon_0=41.4 +h=35786023.0 +a=6378137.0 +b=6356752.31414 +sweep=x +units=m',
-                'default_center': (41.5, 0.),  # lon, lat center point 
+                'default_center': (41.5, 0.),  # lon, lat center point
                 'default_width': 40.,  # degrees from left edge to right edge
                 'default_height': 40.,  # degrees from bottom edge to top edge
             }),
@@ -2204,7 +2204,6 @@ class Document(QObject):  # base class is rightmost, mixins left of that
             # (sat, inst) -> {time -> layer}
             layers = self._recipe_layers[recipe.name].setdefault(category, {})
             # NOTE: combinations may be returned that don't match the recipe
-
             if t not in layers:
                 # create a new blank RGB
                 uuid = uuidgen()
@@ -2216,7 +2215,6 @@ class Document(QObject):  # base class is rightmost, mixins left of that
                 # better place for this?
                 ds_info[INFO.FAMILY] = self.family_for_product_or_layer(ds_info)
                 LOG.debug("Creating new RGB layer for recipe '{}'".format(recipe.name))
-                
                 rgb_layer = layers[t] = DocRGBLayer(self, recipe, ds_info)
                 self._layer_with_uuid[uuid] = rgb_layer
                 layers[t].update_metadata_from_dependencies()
@@ -2442,7 +2440,6 @@ class Document(QObject):  # base class is rightmost, mixins left of that
         self.purge_layer_prez(uuids)
 
     def animate_siblings_of_layer(self, row_or_uuid):
-        
         uuid = self.current_layer_set[row_or_uuid].uuid if not isinstance(row_or_uuid, UUID) else row_or_uuid
         layer = self._layer_with_uuid[uuid]
         L = self.current_layer_set
