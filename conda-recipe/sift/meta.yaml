@@ -14,12 +14,11 @@ build:
   # If this is a new build for the same version, increment the build
   # number. If you do not include this key, it defaults to 0.
   number: 0
-  noarch: python
   script: python -m pip install --no-deps --ignore-installed .
 
 requirements:
   host:
-    - python >=3.6
+    - python {{PY_VER}}*,>=3.6
     - setuptools
     - pip
     - cython >=0.17 # [win]
@@ -44,6 +43,8 @@ requirements:
     - pyopengl
     - netcdf4
     - h5py
+    - imageio
+    - ffmpeg
     - pillow
     - pyshp
     - pyqtgraph
@@ -72,3 +73,4 @@ about:
 # See
 # http://docs.continuum.io/conda/build.html for
 # more information about meta.yaml
+

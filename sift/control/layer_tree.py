@@ -238,9 +238,10 @@ class LayerStackTreeViewModel(QAbstractItemModel):
     _mimetype = 'application/vnd.row.list'
 
     # signals
-    uuidSelectionChanged = pyqtSignal(tuple,)  # the list is a list of the currently selected UUIDs
+    uuidSelectionChanged = pyqtSignal(tuple)  # the list is a list of the currently selected UUIDs
+    didRequestRGBCreation = pyqtSignal(dict)
 
-    def __init__(self, widgets:list, doc:Document, parent=None):
+    def __init__(self, widgets: list, doc: Document, parent=None):
         """
         Connect one or more table views to the document via this model.
         :param widgets: list of TableViews to wire up
@@ -428,8 +429,7 @@ class LayerStackTreeViewModel(QAbstractItemModel):
             request = requests.get(action, None)
             if request is not None:
                 LOG.debug('RGB creation using {0!r:s}'.format(request))
-                # FIXME: This should happen in conjunction with the RGB behavior
-                self.doc.create_rgb_composite(**request)
+                self.didRequestRGBCreation.emit(request)
 
         rgb_menu = QMenu("Create RGB From Selections...", menu)
         for rgb in sorted(set(x[:len(selected_uuids)] for x in ['RGB', 'RBG', 'GRB', 'GBR', 'BRG', 'BGR']), reverse=True):

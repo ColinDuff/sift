@@ -1135,7 +1135,6 @@ class Workspace(QObject):
 
         # activate the content we just loaded into the workspace
         overview_data = self._overview_content_for_uuid(uuid)
-        print(overview_data)
         # prod = self._product_with_uuid(S, uuid)
         return uuid, self.get_info(uuid), overview_data
 
@@ -1188,9 +1187,9 @@ class Workspace(QObject):
             content = [x for x in content if x.info.get(INFO.KIND, KIND.IMAGE) == kind]
             if len(content) != 1:
                 LOG.warning("More than one matching Content object for '{}'".format(dsi_or_uuid))
-            content = content[0]
-            if not content:
+            if not len(content) or not content[0]:
                 raise AssertionError('no content in workspace for {}, must re-import'.format(uuid))
+            content = content[0]
             # content.touch()
             # self._S.commit()  # flush any pending updates to workspace db file
 

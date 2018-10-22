@@ -46,7 +46,8 @@ from sift import __version__
 from sift.util import (WORKSPACE_DB_DIR,
                        DOCUMENT_SETTINGS_DIR,
                        get_package_data_dir,
-                       check_grib_definition_dir)
+                       check_grib_definition_dir,
+                       check_imageio_deps)
 
 from glob import glob
 from functools import partial
@@ -387,6 +388,7 @@ class Main(QtGui.QMainWindow):
         rgb_uuids_handled = set()
         uuids_to_remove = set()
         # if we are deleting an RGB layer then we have to remove all of them
+        uuids = list(uuids)
         for uuid in uuids:
             layer = self.document[uuid]
             if not isinstance(layer, DocRGBLayer):
@@ -395,30 +397,30 @@ class Main(QtGui.QMainWindow):
             elif uuid in rgb_uuids_handled:
                 continue
 
-            rgbs_uuids = self.document.family_uuids_for_uuid(uuid)
-            if len(rgbs_uuids) == 1:
+            rgbs_uuids = self.document.family_uuids_for_uuid(uuid, active_only=True)
+            all_rgbs_uuids = self.document.family_uuids_for_uuid(uuid)
+            if all(l_uuid in uuids for l_uuid in rgbs_uuids):
                 # there is only one of these RGBs so just remove it
-                rgb_uuids_handled.add(uuid)
-                uuids_to_remove.add(uuid)
+                # or they have selected all of the layers in this family
+                rgb_uuids_handled.update(all_rgbs_uuids)
+                uuids_to_remove.update(all_rgbs_uuids)
+                continue
 
             # Ask the user if this is what they want
             msg_box = QtGui.QMessageBox()
-            msg_box.setText("Deleting RGB layer, delete all sibling RGB layers?")
+            msg_box.setText("Deleting RGB layer, delete all times for this RGB?")
             msg_box.setInformativeText("All related RGBs must also be deleted.")
-            msg_box.setStandardButtons(msg_box.Cancel | msg_box.Yes | msg_box.No)
+            msg_box.setStandardButtons(msg_box.Yes | msg_box.No)
             msg_box.setDefaultButton(msg_box.No)
             response = msg_box.exec_()
             if response == msg_box.Yes:
-                LOG.debug("Adding all RGB family UUIDs to be removed: %s", uuid)
-                rgb_uuids_handled.update(rgbs_uuids)
-                uuids_to_remove.update(rgbs_uuids)
-            elif response == msg_box.No:
-                LOG.debug("Will not delete RGB or its family: %s", uuid)
-                rgb_uuids_handled.update(rgbs_uuids)
-                continue
+                LOG.debug("Setting all RGB family UUIDs to be removed: %s", uuid)
+                rgb_uuids_handled.update(all_rgbs_uuids)
+                uuids_to_remove.update(all_rgbs_uuids)
             else:
-                LOG.debug("Cancelled removal of layers")
-                return
+                LOG.debug("Will not delete RGB or its family: %s", uuid)
+                rgb_uuids_handled.update(all_rgbs_uuids)
+                continue
 
         if uuids_to_remove:
             self.document.remove_layers_from_all_sets(uuids_to_remove)
@@ -1089,6 +1091,7 @@ def main():
     # FIXME: This is needed because shapely 1.5.11 sucks
     logging.getLogger().setLevel(level)
     check_grib_definition_dir()
+    check_imageio_deps()
     # logging.getLogger('vispy').setLevel(level)
 
     if args.workspace:

@@ -121,6 +121,12 @@ class RGBLayerConfigPane(QObject):
         self._families[family] = family_info
         self._set_combos_to_family_names()
 
+    def family_removed(self, family):
+        if family in self._families:
+            del self._families[family]
+            self._set_combos_to_family_names()
+            self._show_settings_for_layer(self.recipe)
+
     def _gamma_changed(self, value):
         gamma = tuple(x.value() for x in self.gamma_boxes)
         self.didChangeRGBComponentGamma.emit(self.recipe, gamma)
@@ -293,7 +299,16 @@ class RGBLayerConfigPane(QObject):
             slider[1].setSliderPosition(0)
             editn.setText('0.0')
             editx.setText('0.0')
+            slider[0].setDisabled(True)
+            slider[1].setDisabled(True)
+            editn.setDisabled(True)
+            editx.setDisabled(True)
         else:
+            slider[0].setDisabled(False)
+            slider[1].setDisabled(False)
+            editn.setDisabled(False)
+            editx.setDisabled(False)
+
             valid_range = self._families[family][INFO.VALID_RANGE]
             self._valid_ranges[idx] = valid_range
 
@@ -350,10 +365,11 @@ class RGBLayerConfigPane(QObject):
 
         # fill up our lists of layers
         for widget, selected_family in zip(self.rgb, current_families):
-            if not selected_family:
+            if not selected_family or selected_family not in self._families:
+                # if the selection is None or the current family was removed
+                # if the current family was removed by the document then the
+                # document should have updated the recipe
                 widget.setCurrentIndex(0)
-            # else:
-                # selected_family = selected_family  # Qt item data is lists (see below)
             for idx, (family_name, family_info) in enumerate(sorted(self._families.items(), key=lambda x: x[1][INFO.DISPLAY_FAMILY])):
                 # Qt can't handle tuples as
                 display_name = family_info[INFO.DISPLAY_FAMILY]
@@ -371,7 +387,9 @@ class RGBLayerConfigPane(QObject):
     def _set_gamma_boxes(self, recipe=None):
         if recipe is not None:
             for idx, sbox in enumerate(self.gamma_boxes):
+                sbox.setDisabled(recipe.input_ids[idx] is None)
                 sbox.setValue(recipe.gammas[idx])
         else:
             for idx, sbox in enumerate(self.gamma_boxes):
+                sbox.setDisabled(True)
                 sbox.setValue(1.)

@@ -25,7 +25,7 @@ import numpy as np
 from pyproj import Proj
 from sqlalchemy.orm import Session
 
-from sift.common import PLATFORM, INFO, INSTRUMENT, KIND
+from sift.common import PLATFORM, INFO, INSTRUMENT, KIND, INSTRUMENT_MAP, PLATFORM_MAP
 from sift.workspace.goesr_pug import PugFile
 from sift.workspace.guidebook import ABI_AHI_Guidebook, Guidebook
 from .metadatabase import Resource, Product, Content
@@ -81,6 +81,16 @@ def get_contour_increments(layer_info):
     unit_increments = {
         'K': [5., 2.5, 1., 0.5, 0.1],
         '%': [15., 10., 5., 2., 1.],
+        'kg m**-2': [20., 10., 5., 2., 1.],
+        'm s**-1': [15., 10., 5., 2., 1.],
+        'm**2 s**-1': [5000., 1000., 500., 200., 100.],
+        'gpm': [6000., 2000., 1000., 500., 200.],
+        'kg kg**-1': [16e-8, 8e-8, 4e-8, 2e-8, 1e-8],
+        'Pa s**-1': [6., 3., 2., 1., 0.5],
+        's**-1': [0.02, 0.01, 0.005, 0.002, 0.001],
+        'Pa': [5000., 1000., 500., 200., 100.],
+        'J kg**-1': [5000., 1000., 500., 200., 100.],
+        '(0 - 1)': [0.5, 0.2, 0.1, 0.05, 0.05],
     }
 
     contour_increments = increments.get(standard_name)
@@ -112,6 +122,7 @@ def get_contour_increments(layer_info):
 
 def get_contour_levels(vmin, vmax, increments):
     levels = []
+    mult = 1 / increments[-1]
     for idx, inc in enumerate(increments):
         vmin_round = np.ceil(vmin / inc) * inc
         vmax_round = np.ceil(vmax / inc) * inc
@@ -119,8 +130,11 @@ def get_contour_levels(vmin, vmax, increments):
         # round to the highest increment or modulo operations will be wrong
         inc_levels = np.round(inc_levels / increments[-1]) * increments[-1]
         if idx > 0:
+            # don't use coarse contours in the finer contour levels
+            # we multiple by 1 / increments[-1] to try to resolve precision
+            # errors which can be a big issue for very small increments.
             mask = np.logical_or.reduce([
-                np.isclose(inc_levels % i, 0) for i in increments[:idx]])
+                np.isclose((inc_levels * mult) % (i * mult), 0) for i in increments[:idx]])
             inc_levels = inc_levels[~mask]
         levels.append(inc_levels)
 
@@ -660,7 +674,7 @@ class GoesRPUGImporter(aSingleFileWithSingleProductImporter):
         d[INFO.SHAPE] = shape
         generate_guidebook_metadata(d)
 
-        d[INFO.FAMILY] = '{}:{}:{}:{}µm'.format(KIND.IMAGE.name, 'geo', d[INFO.STANDARD_NAME], d[INFO.CENTRAL_WAVELENGTH]) # kind:pointofreference:measurement:wavelength
+        d[INFO.FAMILY] = '{}:{}:{}:{:5.2f}µm'.format(KIND.IMAGE.name, 'geo', d[INFO.STANDARD_NAME], d[INFO.CENTRAL_WAVELENGTH]) # kind:pointofreference:measurement:wavelength
         d[INFO.CATEGORY] = 'NOAA-PUG:{}:{}:{}'.format(d[INFO.PLATFORM].name, d[INFO.INSTRUMENT].name, d[INFO.SCENE])  # system:platform:instrument:target
         d[INFO.SERIAL] = pug.time_span[0].strftime("%Y%m%dT%H%M%S")
         LOG.debug(repr(d))
@@ -921,6 +935,41 @@ class SatPyImporter(aImporter):
         #          which SIFT probably shouldn't care about
         return len(self.dataset_ids)
 
+    @staticmethod
+    def _get_platform_instrument(attrs: dict):
+        """Convert SatPy platform_name/sensor to """
+        attrs[INFO.INSTRUMENT] = attrs.get('sensor')
+        attrs[INFO.PLATFORM] = attrs.get('platform_name')
+
+        # Special handling of GRIB forecast data
+        if 'centreDescription' in attrs and \
+                attrs[INFO.INSTRUMENT] == 'unknown':
+            description = attrs['centreDescription']
+            if attrs.get(INFO.PLATFORM) is None:
+                attrs[INFO.PLATFORM] = 'NWP'
+            if 'NCEP' in description:
+                attrs[INFO.INSTRUMENT] = 'GFS'
+        if attrs[INFO.INSTRUMENT] in ['GFS', 'unknown']:
+            attrs[INFO.INSTRUMENT] = INSTRUMENT.GFS
+        if attrs[INFO.PLATFORM] in ['NWP', 'unknown']:
+            attrs[INFO.PLATFORM] = PLATFORM.NWP
+
+        # FUTURE: Use standard string names for platform/instrument
+        #         instead of an Enum. Otherwise, could use a reverse
+        #         Enum lookup to match Enum values to Enum keys.
+        # if we haven't figured out what these are then give up and say they are unknown
+        if isinstance(attrs[INFO.PLATFORM], str):
+            plat_str = attrs[INFO.PLATFORM].lower().replace('-', '')
+            attrs[INFO.PLATFORM] = PLATFORM_MAP.get(plat_str, attrs[INFO.PLATFORM])
+        if not attrs[INFO.PLATFORM] or isinstance(attrs[INFO.PLATFORM], str):
+            attrs[INFO.PLATFORM] = PLATFORM.UNKNOWN
+
+        if isinstance(attrs[INFO.INSTRUMENT], str):
+            inst_str = attrs[INFO.INSTRUMENT].lower().replace('-', '')
+            attrs[INFO.INSTRUMENT] = INSTRUMENT_MAP.get(inst_str, attrs[INFO.INSTRUMENT])
+        if not attrs[INFO.INSTRUMENT] or isinstance(attrs[INFO.INSTRUMENT], str):
+            attrs[INFO.INSTRUMENT] = INSTRUMENT.UNKNOWN
+
     def load_all_datasets(self) -> Scene:
         self.scn.load(self.dataset_ids, **self.product_filters)
         # copy satpy metadata keys to SIFT keys
@@ -938,23 +987,11 @@ class SatPyImporter(aImporter):
             # Handle GRIB platform/instrument
             ds.attrs[INFO.KIND] = KIND.IMAGE if self.reader != 'grib' else \
                 KIND.CONTOUR
-            ds.attrs[INFO.INSTRUMENT] = ds.attrs.get('sensor')
-            ds.attrs[INFO.PLATFORM] = ds.attrs.get('platform_name')
-            if 'centreDescription' in ds.attrs and \
-                    ds.attrs[INFO.INSTRUMENT] == 'unknown':
-                description = ds.attrs['centreDescription']
-                if ds.attrs.get(INFO.PLATFORM) is None:
-                    ds.attrs[INFO.PLATFORM] = 'NWP'
-                if 'NCEP' in description:
-                    ds.attrs[INFO.INSTRUMENT] = 'GFS'
-            if ds.attrs[INFO.INSTRUMENT] in ['GFS', 'unknown']:
-                ds.attrs[INFO.INSTRUMENT] = INSTRUMENT.GFS
-            if ds.attrs[INFO.PLATFORM] in ['NWP', 'unknown']:
-                ds.attrs[INFO.PLATFORM] = PLATFORM.NWP
+            self._get_platform_instrument(ds.attrs)
             ds.attrs.setdefault(INFO.STANDARD_NAME, ds.attrs.get('standard_name'))
             if 'wavelength' in ds.attrs:
                 ds.attrs.setdefault(INFO.CENTRAL_WAVELENGTH,
-                                    ds.attrs['wavelength'])
+                                    ds.attrs['wavelength'][0])
 
             # Resolve anything else needed by SIFT
             id_str = ":".join(str(v) for v in DatasetID.from_dict(ds.attrs))
@@ -968,26 +1005,27 @@ class SatPyImporter(aImporter):
                 ds.attrs[INFO.SHORT_NAME] = "{} @ {}hPa".format(
                     ds.attrs['name'], ds.attrs['level'])
             ds.attrs[INFO.SHAPE] = ds.shape
+            ds.attrs[INFO.UNITS] = ds.attrs.get('units')
             generate_guidebook_metadata(ds.attrs)
 
             # Generate FAMILY and CATEGORY
             if 'model_time' in ds.attrs:
                 model_time = ds.attrs['model_time'].isoformat()
-                cat_id = model_time + ':' + id_str
             else:
                 model_time = None
-                cat_id = id_str
             ds.attrs[INFO.SCENE] = hash(ds.attrs['area'])
-            ds.attrs[INFO.FAMILY] = '{}:{}:{}'.format(
+            if ds.attrs.get(INFO.CENTRAL_WAVELENGTH) is None:
+                cw = ""
+            else:
+                cw = ":{:5.2f}µm".format(ds.attrs[INFO.CENTRAL_WAVELENGTH])
+            ds.attrs[INFO.FAMILY] = '{}:{}:{}{}'.format(
                 ds.attrs[INFO.KIND].name, ds.attrs[INFO.STANDARD_NAME],
-                ds.attrs[INFO.SHORT_NAME])
-            ds.attrs[INFO.CATEGORY] = 'SatPy:{}:{}:{}:{}'.format(
-                ds.attrs[INFO.PLATFORM], ds.attrs[INFO.INSTRUMENT],
-                ds.attrs[INFO.SCENE], cat_id)  # system:platform:instrument:target
+                ds.attrs[INFO.SHORT_NAME], cw)
+            ds.attrs[INFO.CATEGORY] = 'SatPy:{}:{}:{}'.format(
+                ds.attrs[INFO.PLATFORM].name, ds.attrs[INFO.INSTRUMENT].name,
+                ds.attrs[INFO.SCENE])  # system:platform:instrument:target
             # TODO: Include level or something else in addition to time?
-            #       Probably need to include the model run time (prefix id_str?)
-
-            start_str = ds.attrs['start_time'][0].isoformat()
+            start_str = ds.attrs['start_time'].isoformat()
             ds.attrs[INFO.SERIAL] = start_str if model_time is None else model_time + ":" + start_str
 
         return self.scn
